@@ -7,8 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1tcbH4a4AxUVtSoOTqqsjUGzOZ4vRaYpI
 """
 
-!pip install langchain-groq
-
 
 import os
 import streamlit as st
