@@ -7,26 +7,25 @@ Original file is located at
     https://colab.research.google.com/drive/1tcbH4a4AxUVtSoOTqqsjUGzOZ4vRaYpI
 """
 
-
 import os
 import streamlit as st
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage
 
-# Konfigurasi halaman 
+# --- Konfigurasi halaman ---
 st.set_page_config(page_title="Ngobrolin Film 🎬", page_icon="🍿")
 
-# API Key
+# --- API Key dari environment / Streamlit Secrets ---
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 if not GROQ_API_KEY:
-    st.error("❌ GROQ_API_KEY belum di-set. Tambahkan di `.env` atau Streamlit Secrets.")
+    st.error("❌ GROQ_API_KEY belum di-set. Tambahkan di `.env` (lokal) atau di Streamlit Secrets.")
     st.stop()
 
-# Inisialisasi model
+# --- Inisialisasi model ---
 llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.8)
 
-# Prompt sistem 
+# --- Prompt sistem utama ---
 system_prompt = """
 Kamu adalah Chatbot Film yang ramah, seru, dan hanya membahas seputar film
 (rekomendasi, sinopsis, detail pemeran, genre, fakta menarik).
@@ -40,19 +39,29 @@ Aturan utama:
 5. Diskusi boleh ditambah fakta menarik (sutradara, aktor, produksi).
 """
 
+# Template prompt
 prompt = ChatPromptTemplate.from_messages([
     ("system", system_prompt),
     ("human", "{user_input}")
 ])
 
-# State
+# --- State ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
 if "ended" not in st.session_state:
     st.session_state.ended = False
 
-# UI
+# --- Utility: gabungkan konteks percakapan ---
+def build_context(messages, max_chars=2000):
+    """Gabungkan riwayat percakapan jadi string untuk input model"""
+    context = []
+    for msg in messages:
+        role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+        context.append(f"{role}: {msg.content}")
+    text = "\n".join(context)
+    return text[-max_chars:] if len(text) > max_chars else text
+
+# --- UI ---
 st.title("🎬 Ngobrolin Film")
 st.caption("Teman ngobrol seputar film. Ketik **keluar** untuk mengakhiri obrolan.")
 
@@ -61,22 +70,22 @@ if st.button("🔄 Reset Obrolan"):
     st.session_state.ended = False
     st.experimental_rerun()
 
-# Tampilkan history
+# --- Tampilkan riwayat ---
 for msg in st.session_state.messages:
     role = "user" if isinstance(msg, HumanMessage) else "assistant"
     with st.chat_message(role):
         st.markdown(msg.content)
 
-# Input user
+# --- Input User ---
 if not st.session_state.ended:
     user_input = st.chat_input("Tulis pertanyaan atau obrolan seputar film...")
 else:
     st.info("Sesi telah diakhiri. Tekan **Reset Obrolan** untuk mulai lagi.")
     user_input = None
 
-# Proses input
+# --- Proses ---
 if user_input:
-    # Tambah pesan user
+    # Tambahkan pesan user ke history
     st.session_state.messages.append(HumanMessage(content=user_input))
     with st.chat_message("user"):
         st.markdown(user_input)
@@ -94,12 +103,17 @@ if user_input:
         st.session_state.ended = True
         st.stop()
 
+    # Bangun konteks percakapan (history)
+    context = build_context(st.session_state.messages[:-1])  # tanpa input terbaru
+    composed_input = f"{context}\n\nUser baru saja bertanya:\n{user_input}"
+
     # Kirim ke LLM
     chain = prompt | llm
-    response = chain.invoke({"user_input": user_input})
+    response = chain.invoke({"user_input": composed_input})
     answer = response.content
 
-    # Tambah respon AI
+    # Tambahkan jawaban ke history
     st.session_state.messages.append(AIMessage(content=answer))
     with st.chat_message("assistant"):
         st.markdown(answer)
+
