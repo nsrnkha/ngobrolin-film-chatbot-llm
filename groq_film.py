@@ -9,69 +9,99 @@ Original file is located at
 
 !pip install langchain-groq
 
+
 import os
-import getpass
-
-# Inisialisasi API Key Groq
-if "GROQ_API_KEY" not in os.environ:
-    os.environ["GROQ_API_KEY"] = getpass.getpass("GROQ_API_KEY ")
-
+import streamlit as st
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, AIMessage
 
-# Inisialisasi model Groq LLM
+# Konfigurasi halaman 
+st.set_page_config(page_title="Ngobrolin Film 🎬", page_icon="🍿")
+
+# API Key
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    st.error("❌ GROQ_API_KEY belum di-set. Tambahkan di `.env` atau Streamlit Secrets.")
+    st.stop()
+
+# Inisialisasi model
 llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.8)
 
-# Prompt utama
+# Prompt sistem 
 system_prompt = """
-Kamu adalah Chatbot Film yang ramah, seru, dan selalu fokus hanya membicarakan seputar film
+Kamu adalah Chatbot Film yang ramah, seru, dan hanya membahas seputar film
 (rekomendasi, sinopsis, detail pemeran, genre, fakta menarik).
-Kamu bukan hanya pemberi rekomendasi, tapi juga teman diskusi film yang bisa ngobrol panjang.
+Kamu teman diskusi film yang nyambung dalam percakapan.
 
 Aturan utama:
-1. Selalu ingat konteks percakapan sebelumnya agar jawaban nyambung (misalnya, jika user bertanya film Indonesia setelah sebelumnya minta film lucu, maka jawab dengan film Indonesia lucu, bukan random lagi).
-2. Jika user mengetik 'keluar', ucapkan selamat tinggal dengan gaya ramah dan kreatif, contohnya:
-   "Terima kasih sudah ngobrol soal film bareng aku. Semoga filmnya seru ya! Sampai jumpa 👋"
-3. Jangan keluar topik film. Jika user menanyakan hal di luar film, tolak dengan sopan dan ajak balik ke topik film.
-4. Jika user minta rekomendasi film, berikan daftar minimal 2–3 film dengan detail: judul, tahun rilis, genre, sinopsis singkat, dan pemeran utama.
-5. Jika user ingin diskusi, tanggapi dengan antusias dan bisa menambahkan fakta menarik tentang film, sutradara, atau aktor.
-
-Fokus utama: jadi teman ngobrol seputar film dengan jawaban detail dan tetap nyambung dalam percakapan.
+1. Ingat konteks percakapan sebelumnya agar jawaban nyambung.
+2. Jika user mengetik 'keluar', beri ucapan selamat tinggal ramah.
+3. Jangan keluar topik film, tolak dengan sopan bila user keluar topik.
+4. Rekomendasi minimal 2–3 film lengkap (judul, tahun, genre, sinopsis singkat, pemeran utama).
+5. Diskusi boleh ditambah fakta menarik (sutradara, aktor, produksi).
 """
 
-# Prompt template
 prompt = ChatPromptTemplate.from_messages([
     ("system", system_prompt),
     ("human", "{user_input}")
 ])
 
-# Sambutan awal (This part will still print the welcome message once)
-print("🎬 Selamat datang di Chatbot Film!")
-print("Saya siap menemani obrolanmu seputar film. 🎥")
-print("Ketik 'keluar' untuk mengakhiri percakapan.\n")
+# State
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# Loop percakapan
-while True:
-    user_input = input("Anda: ")
-    if user_input.lower() == "keluar":
-        print("\n🍿 Terima kasih sudah ngobrol bareng Chatbot Film!")
-        print("Semoga rekomendasi dan diskusinya bermanfaat. Sampai jumpa di layar berikutnya! 🎞️👋")
-        break
+if "ended" not in st.session_state:
+    st.session_state.ended = False
 
-    # Send user input to the LLM
+# UI
+st.title("🎬 Ngobrolin Film")
+st.caption("Teman ngobrol seputar film. Ketik **keluar** untuk mengakhiri obrolan.")
+
+if st.button("🔄 Reset Obrolan"):
+    st.session_state.messages = []
+    st.session_state.ended = False
+    st.experimental_rerun()
+
+# Tampilkan history
+for msg in st.session_state.messages:
+    role = "user" if isinstance(msg, HumanMessage) else "assistant"
+    with st.chat_message(role):
+        st.markdown(msg.content)
+
+# Input user
+if not st.session_state.ended:
+    user_input = st.chat_input("Tulis pertanyaan atau obrolan seputar film...")
+else:
+    st.info("Sesi telah diakhiri. Tekan **Reset Obrolan** untuk mulai lagi.")
+    user_input = None
+
+# Proses input
+if user_input:
+    # Tambah pesan user
+    st.session_state.messages.append(HumanMessage(content=user_input))
+    with st.chat_message("user"):
+        st.markdown(user_input)
+
+    # Handle keluar
+    if user_input.lower().strip() == "keluar":
+        goodbye = (
+            "🍿 Terima kasih sudah ngobrol bareng **Ngobrolin Film**!\n"
+            "Semoga rekomendasi dan diskusinya bermanfaat.\n"
+            "Sampai jumpa di layar berikutnya! 🎞️👋"
+        )
+        st.session_state.messages.append(AIMessage(content=goodbye))
+        with st.chat_message("assistant"):
+            st.markdown(goodbye)
+        st.session_state.ended = True
+        st.stop()
+
+    # Kirim ke LLM
     chain = prompt | llm
     response = chain.invoke({"user_input": user_input})
-    print("mimin:", response.content, "\n")
+    answer = response.content
 
-# Loop percakapan
-while True:
-    user_input = input("Anda: ")
-    if user_input.lower() == "keluar":
-        print("\n🍿 Terima kasih sudah ngobrol bareng Chatbot Film!")
-        print("Semoga rekomendasi dan diskusinya bermanfaat. Sampai jumpa di layar berikutnya! 🎞️👋")
-        break
-
-    # Send user input to the LLM
-    chain = prompt | llm
-    response = chain.invoke({"user_input": user_input})
-    print("mimin:", response.content, "\n")
+    # Tambah respon AI
+    st.session_state.messages.append(AIMessage(content=answer))
+    with st.chat_message("assistant"):
+        st.markdown(answer)
